@@ -1,0 +1,39 @@
+<?xml version="1.0" encoding="utf-8"?>
+<AutoVisualizer xmlns="http://schemas.microsoft.com/vstudio/debugger/natvis/2010">
+
+  <!-- Array<T> -->
+  <Type Name="Array&lt;*&gt;">
+    <DisplayString>{{ count={count} capacity={capacity} }}</DisplayString>
+    <Expand>
+      <Item Name="[count]">count</Item>
+      <Item Name="[capacity]">capacity</Item>
+      <ArrayItems>
+        <Size>count</Size>
+        <ValuePointer>data</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+
+  <!-- HashEntry<T> -->
+  <Type Name="HashEntry&lt;*&gt;">
+    <DisplayString>{{ key={key} value={value} }}</DisplayString>
+    <Expand>
+      <Item Name="key">key</Item>
+      <Item Name="value">value</Item>
+    </Expand>
+  </Type>
+
+  <!-- HashMap<T> -->
+  <Type Name="HashMap&lt;*&gt;">
+    <DisplayString>{{ size={m_size} capacity={m_capacity} }}</DisplayString>
+    <Expand>
+      <Item Name="[size]">m_size</Item>
+      <Item Name="[capacity]">m_capacity</Item>
+      <ArrayItems>
+        <Size>m_size</Size>
+        <ValuePointer>m_data</ValuePointer>
+      </ArrayItems>
+    </Expand>
+  </Type>
+
+</AutoVisualizer>

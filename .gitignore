@@ -1,0 +1,5 @@
+build/*
+build_dev_release/*
+build_shipping/*
+.vs/*
+.vscode/*
