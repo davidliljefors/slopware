@@ -282,6 +282,18 @@ OsFile os_file_open_read(const char* path)
 	return { (void*)h };
 }
 
+OsFile os_file_open_write(const char* path)
+{
+	wchar_t wide[4096];
+	if (wide_from_utf8(wide, 4096, path) <= 0)
+		return OS_FILE_INVALID;
+	HANDLE h = CreateFileW(wide, GENERIC_WRITE, 0,
+		nullptr, CREATE_ALWAYS, FILE_ATTRIBUTE_NORMAL, nullptr);
+	if (h == INVALID_HANDLE_VALUE)
+		return OS_FILE_INVALID;
+	return { (void*)h };
+}
+
 OsFile os_file_open_seq(const char* path)
 {
 	wchar_t wide[4096];
@@ -316,6 +328,20 @@ i64 os_file_size(OsFile file)
 	return (i64)size.QuadPart;
 }
 
+i64 os_file_last_write_time(const char* path)
+{
+	wchar_t wide[4096];
+	if (wide_from_utf8(wide, 4096, path) <= 0)
+		return 0;
+	WIN32_FILE_ATTRIBUTE_DATA data;
+	if (!GetFileAttributesExW(wide, GetFileExInfoStandard, &data))
+		return 0;
+	LARGE_INTEGER li;
+	li.LowPart = data.ftLastWriteTime.dwLowDateTime;
+	li.HighPart = data.ftLastWriteTime.dwHighDateTime;
+	return li.QuadPart;
+}
+
 bool os_file_read(OsFile file, void* buf, i32 size, i32* bytes_read)
 {
 	DWORD read = 0;
@@ -323,6 +349,13 @@ bool os_file_read(OsFile file, void* buf, i32 size, i32* bytes_read)
 	if (bytes_read)
 		*bytes_read = (i32)read;
 	return ok != 0;
+}
+
+bool os_file_write(OsFile file, const void* buf, i32 size)
+{
+	DWORD written = 0;
+	BOOL ok = WriteFile((HANDLE)file._handle, buf, (DWORD)size, &written, nullptr);
+	return ok != 0 && (i32)written == size;
 }
 
 void os_file_close(OsFile file)
@@ -449,5 +482,104 @@ const char* os_path_find_extension(const char* filename)
 		p++;
 	}
 	return last_dot ? last_dot : p; // p points to null terminator
+}
+
+// Directory change watcher
+
+struct DirWatcher
+{
+	HANDLE     dir_handle;
+	OVERLAPPED overlapped;
+	u8         buffer[8192];
+	bool       pending;
+};
+
+static void dir_watcher_issue(DirWatcher* w)
+{
+	memset(&w->overlapped, 0, sizeof(w->overlapped));
+	w->overlapped.hEvent = CreateEventW(nullptr, TRUE, FALSE, nullptr);
+	BOOL ok = ReadDirectoryChangesW(
+		w->dir_handle, w->buffer, sizeof(w->buffer), FALSE,
+		FILE_NOTIFY_CHANGE_LAST_WRITE | FILE_NOTIFY_CHANGE_SIZE | FILE_NOTIFY_CHANGE_FILE_NAME,
+		nullptr, &w->overlapped, nullptr);
+	w->pending = (ok != 0);
+	if (!ok && w->overlapped.hEvent) {
+		CloseHandle(w->overlapped.hEvent);
+		w->overlapped.hEvent = nullptr;
+	}
+}
+
+DirWatcher* dir_watcher_create(const char* dir_utf8)
+{
+	wchar_t dir_wide[MAX_PATH];
+	if (wide_from_utf8(dir_wide, MAX_PATH, dir_utf8) <= 0) return nullptr;
+
+	HANDLE h = CreateFileW(
+		dir_wide,
+		FILE_LIST_DIRECTORY,
+		FILE_SHARE_READ | FILE_SHARE_WRITE | FILE_SHARE_DELETE,
+		nullptr, OPEN_EXISTING,
+		FILE_FLAG_BACKUP_SEMANTICS | FILE_FLAG_OVERLAPPED,
+		nullptr);
+	if (h == INVALID_HANDLE_VALUE) return nullptr;
+
+	DirWatcher* w = (DirWatcher*)VirtualAlloc(
+		nullptr, sizeof(DirWatcher),
+		MEM_COMMIT | MEM_RESERVE, PAGE_READWRITE);
+	memset(w, 0, sizeof(*w));
+	w->dir_handle = h;
+
+	dir_watcher_issue(w);
+	if (!w->pending) {
+		CloseHandle(h);
+		VirtualFree(w, 0, MEM_RELEASE);
+		return nullptr;
+	}
+	return w;
+}
+
+void dir_watcher_poll(DirWatcher* w, DirWatchCallback cb, void* user_data)
+{
+	if (!w || !w->pending) return;
+
+	DWORD bytes_returned = 0;
+	BOOL complete = GetOverlappedResult(w->dir_handle, &w->overlapped, &bytes_returned, FALSE);
+	if (!complete) return;
+
+	if (w->overlapped.hEvent) {
+		CloseHandle(w->overlapped.hEvent);
+		w->overlapped.hEvent = nullptr;
+	}
+	w->pending = false;
+
+	if (bytes_returned > 0) {
+		u8* ptr = w->buffer;
+		for (;;) {
+			FILE_NOTIFY_INFORMATION* info = (FILE_NOTIFY_INFORMATION*)ptr;
+
+			i32 name_wchars = (i32)(info->FileNameLength / sizeof(wchar_t));
+			char name_utf8[512];
+			i32 name_len = utf8_from_wide(name_utf8, (i32)sizeof(name_utf8), info->FileName, name_wchars);
+			if (name_len > 0)
+				cb(name_utf8, user_data);
+
+			if (info->NextEntryOffset == 0) break;
+			ptr += info->NextEntryOffset;
+		}
+	}
+
+	dir_watcher_issue(w);
+}
+
+void dir_watcher_destroy(DirWatcher* w)
+{
+	if (!w) return;
+	CancelIo(w->dir_handle);
+	if (w->pending && w->overlapped.hEvent)
+		WaitForSingleObject(w->overlapped.hEvent, 1000);
+	if (w->overlapped.hEvent)
+		CloseHandle(w->overlapped.hEvent);
+	CloseHandle(w->dir_handle);
+	VirtualFree(w, 0, MEM_RELEASE);
 }
 

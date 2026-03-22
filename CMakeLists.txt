@@ -6,9 +6,16 @@ set(CMAKE_CXX_STANDARD_REQUIRED ON)
 set(CMAKE_EXPORT_COMPILE_COMMANDS ON)
 
 # -- FreeType (prebuilt) --
+if(DEFINED TARGET_ARCH)
+    set(FREETYPE_ARCH "${TARGET_ARCH}")
+elseif(CMAKE_GENERATOR_PLATFORM STREQUAL "ARM64" OR CMAKE_SYSTEM_PROCESSOR STREQUAL "ARM64")
+    set(FREETYPE_ARCH "arm64")
+else()
+    set(FREETYPE_ARCH "x64")
+endif()
 add_library(freetype STATIC IMPORTED GLOBAL)
 set_target_properties(freetype PROPERTIES
-    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/third_party/freetype/lib/x64/freetype.lib"
+    IMPORTED_LOCATION "${CMAKE_SOURCE_DIR}/third_party/freetype/lib/${FREETYPE_ARCH}/freetype.lib"
     INTERFACE_INCLUDE_DIRECTORIES "${CMAKE_SOURCE_DIR}/third_party/freetype/include"
 )
 
@@ -68,3 +75,35 @@ option(ENABLE_CONSOLE "Allocate a console window on startup" OFF)
 if(ENABLE_CONSOLE)
     target_compile_definitions(slop PRIVATE ENABLE_CONSOLE)
 endif()
+
+# -- VS Plugin DLL --
+
+add_library(plugin_core SHARED
+    vs_plugin/native/plugin_api.cpp
+    vs_plugin/native/plugin_host.cpp
+    vs_plugin/native/plugin_goto_file.cpp
+    vs_plugin/native/plugin_goto_text.cpp
+    vs_plugin/native/plugin_goto_text_in_file.cpp
+    vs_plugin/native/string_util.cpp
+    vs_plugin/native/text_search.cpp
+    src/allocators.cpp
+    src/os.cpp
+    src/os_window.cpp
+    src/theme.cpp
+    src/imgui_util.cpp
+    src/utf.cpp
+    src/app_util.cpp
+)
+
+target_include_directories(plugin_core PRIVATE
+    src
+    vs_plugin/native
+)
+
+target_compile_definitions(plugin_core PRIVATE PLUGIN_CORE_EXPORTS)
+
+if(ENABLE_CONSOLE)
+    target_compile_definitions(plugin_core PRIVATE ENABLE_CONSOLE)
+endif()
+
+target_link_libraries(plugin_core PRIVATE imgui)

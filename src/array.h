@@ -13,6 +13,15 @@ struct Array
 	u64 capacity;
 	Allocator* allocator;
 
+	Array()
+	: data(nullptr)
+	, count(0ull)
+	, capacity(0ull)
+	, allocator(application_heap())
+	{
+		
+	}
+
 	void init(Allocator* a)
 	{
 		data = nullptr;

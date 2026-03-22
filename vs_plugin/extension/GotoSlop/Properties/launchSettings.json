@@ -1,0 +1,8 @@
+{
+  "profiles": {
+    "GotoSlop": {
+      "commandName": "DebugExtensionHost",
+      "nativeDebugging": true
+    }
+  }
+}

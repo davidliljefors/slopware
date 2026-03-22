@@ -55,6 +55,9 @@ static inline bool os_file_valid(OsFile f) { return f._handle != nullptr; }
 // Open a file for reading.
 OsFile os_file_open_read(const char* path);
 
+// Open a file for writing (creates or truncates).
+OsFile os_file_open_write(const char* path);
+
 // Open a file for reading with sequential-scan hint.
 OsFile os_file_open_seq(const char* path);
 
@@ -64,9 +67,15 @@ OsFile os_dir_open(const char* path);
 // Get file size in bytes. Returns -1 on error.
 i64 os_file_size(OsFile file);
 
+// Get last write time of a file by path (UTF-8). Returns 0 on failure.
+i64 os_file_last_write_time(const char* path);
+
 // Read bytes from a file. Returns true on success.
 // *bytes_read is set to the number of bytes actually read.
 bool os_file_read(OsFile file, void* buf, i32 size, i32* bytes_read);
+
+// Write bytes to a file. Returns true on success.
+bool os_file_write(OsFile file, const void* buf, i32 size);
 
 // Close a file or directory handle.
 void os_file_close(OsFile file);
@@ -160,3 +169,22 @@ void condvar_wake_all(CondVar* cv);
 // cv must point to a zero-initialized CONDITION_VARIABLE (pointer-sized).
 void lock_sleep_condition(Lock* l, void* cv, u32 ms);
 void lock_wake_all_condition(void* cv);
+
+// Directory change watcher
+struct DirWatcher;
+
+// Callback invoked for each changed file.
+//   name_utf8: filename that changed
+//   user_data: forwarded from dir_watcher_poll
+typedef void (*DirWatchCallback)(const char* name_utf8, void* user_data);
+
+// Create a watcher for a single directory (UTF-8 path).
+// Returns nullptr on failure.
+DirWatcher* dir_watcher_create(const char* dir_utf8);
+
+// Non-blocking poll. Calls cb for each file that changed since the
+// last poll. Re-arms the watcher automatically.
+void dir_watcher_poll(DirWatcher* w, DirWatchCallback cb, void* user_data);
+
+// Destroy the watcher and release all resources.
+void dir_watcher_destroy(DirWatcher* w);

@@ -1,0 +1,5 @@
+{
+  "GotoSlop.GoToFileCommand.DisplayName": "GotoSlop: Go To File",
+  "GotoSlop.GoToTextCommand.DisplayName": "GotoSlop: Go To Text",
+  "GotoSlop.GoToTextInFileCommand.DisplayName": "GotoSlop: Search in File"
+}
