@@ -1,6 +1,8 @@
 #include "plugin_api.h"
 #include "plugin_internal.h"
 #include "plugin_host.h"
+#include "plugin_goto_file.h"
+#include "plugin_goto_text.h"
 #include "plugin_goto_text_in_file.h"
 #include "string_util.h"
 
@@ -56,6 +58,7 @@ struct DirWatcherEntry
 
 static Array<DirWatcherEntry> g_watchers;
 static HashMap<i32> g_path_to_index; // full path hash -> file index
+static Lock g_watchers_lock;          // protects g_watchers + g_path_to_index
 
 static u64 hash_path_lower(const char* path, i32 len)
 {
@@ -97,9 +100,20 @@ static void on_file_changed(const char* name_utf8, void* user_data)
 	}
 }
 
+// Internal: stop watchers, caller must hold g_watchers_lock for write.
+static void dir_watchers_stop_locked()
+{
+	for (u64 i = 0; i < g_watchers.count; i++)
+		dir_watcher_destroy(g_watchers[i].watcher);
+	g_watchers.clear();
+	g_path_to_index.reset();
+}
+
 void dir_watchers_start()
 {
-	dir_watchers_stop();
+	WriteGuard wg(&g_watchers_lock);
+
+	dir_watchers_stop_locked();
 
 	PluginFileStore* fs = &g_file_store;
 	ReadGuard rg(&fs->files_lock);
@@ -146,22 +160,20 @@ void dir_watchers_start()
 		g_watchers.push(entry);
 	}
 
-	printf("[GotoSlop] Watching %llu directories for changes\n", g_watchers.count);
-	fflush(stdout);
+	PLUGIN_LOG("Watching %llu directories for changes", g_watchers.count);
 
 	dir_seen.reset();
 }
 
 void dir_watchers_stop()
 {
-	for (u64 i = 0; i < g_watchers.count; i++)
-		dir_watcher_destroy(g_watchers[i].watcher);
-	g_watchers.clear();
-	g_path_to_index.reset();
+	WriteGuard wg(&g_watchers_lock);
+	dir_watchers_stop_locked();
 }
 
 void dir_watchers_poll()
 {
+	ReadGuard rg(&g_watchers_lock);
 	for (u64 i = 0; i < g_watchers.count; i++) {
 		DirWatchPollCtx ctx = { g_watchers[i].dir_path };
 		dir_watcher_poll(g_watchers[i].watcher, on_file_changed, &ctx);
@@ -288,6 +300,7 @@ static void ensure_init()
 #ifdef ENABLE_CONSOLE
 	debug_console_init();
 #endif
+	lock_init(&g_watchers_lock);
 	file_store_init(&g_file_store);
 }
 
@@ -480,8 +493,7 @@ static void refresh_stale_content_impl()
 	f64 elapsed_ms = (timer_now() - t0) * 1000.0;
 	i32 changed = reloaded.load(std::memory_order_relaxed);
 	if (changed > 0) {
-		printf("[GotoSlop] refresh: %d reloaded, %.1fms\n", changed, elapsed_ms);
-		fflush(stdout);
+		PLUGIN_LOG("refresh: %d reloaded, %.1fms", changed, elapsed_ms);
 	}
 }
 
@@ -494,6 +506,7 @@ static void refresh_thread_func(void*)
 void begin_refresh()
 {
 	if (g_refresh_thread) {
+		PLUGIN_LOG("begin_refresh: joining previous refresh thread");
 		thread_join(g_refresh_thread);
 		g_refresh_thread = nullptr;
 	}
@@ -562,6 +575,23 @@ PLUGIN_API void __stdcall plugin_set_solution_files(const char** files, const ch
 {
 	ensure_init();
 
+	PLUGIN_LOG("SetSolutionFiles: %d files", count);
+
+	// Drain any in-flight refresh thread first -- it may be polling watchers
+	if (g_refreshing.load(std::memory_order_acquire)) {
+		PLUGIN_LOG("SetSolutionFiles: draining active refresh thread");
+		f64 t0 = timer_now();
+		ensure_refresh_done();
+		PLUGIN_LOG("SetSolutionFiles: refresh drained in %.1fms", (timer_now() - t0) * 1000.0);
+	} else {
+		ensure_refresh_done();
+	}
+
+	// Cancel any running searches -- they hold ReadGuard on files_lock
+	// and access path_arena pointers that file_store_clear will free.
+	plugin_goto_file_cancel_search();
+	plugin_goto_text_cancel_search();
+
 	// Stop watchers before clearing files
 	dir_watchers_stop();
 
@@ -579,6 +609,8 @@ PLUGIN_API void __stdcall plugin_set_solution_files(const char** files, const ch
 
 	// Start watching the directories these files live in
 	dir_watchers_start();
+
+	PLUGIN_LOG("SetSolutionFiles: done, version=%d", g_file_store.version);
 }
 
 PLUGIN_API void __stdcall plugin_set_callback(PluginSelectionCallback callback)
@@ -634,7 +666,7 @@ static void preload_thread_func(void*)
 	ReadGuard rg(&g_file_store.files_lock);
 	i32 count = (i32)g_file_store.files.count;
 	f64 arena_mb = g_file_store.content_arena.get_bytes_allocated() / (1024.0 * 1024.0);
-	printf("[GotoSlop] Loaded %d files in %.0f ms  |  Arena: %.1f MB\n", count, elapsed_ms, arena_mb);
+	PLUGIN_LOG("Loaded %d files in %.0f ms  |  Arena: %.1f MB", count, elapsed_ms, arena_mb);
 
 	g_preloading.store(false);
 }
@@ -660,14 +692,19 @@ PLUGIN_API void __stdcall plugin_shutdown(void)
 {
 	if (!g_initialized) return;
 
+	PLUGIN_LOG("shutdown");
+
+	// Cancel searches before draining threads
+	plugin_goto_file_cancel_search();
+	plugin_goto_text_cancel_search();
+
+	ensure_refresh_done();
 	dir_watchers_stop();
 
 	if (g_preload_thread) {
 		thread_join(g_preload_thread);
 		g_preload_thread = nullptr;
 	}
-
-	ensure_refresh_done();
 
 	plugin_host_shutdown();
 

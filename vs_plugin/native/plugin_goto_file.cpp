@@ -482,6 +482,11 @@ void plugin_goto_file_tick()
 	ImGui::End();
 }
 
+void plugin_goto_file_cancel_search()
+{
+	cancel_search();
+}
+
 void plugin_goto_file_shutdown()
 {
 	cancel_search();

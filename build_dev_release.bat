@@ -18,4 +18,4 @@ if errorlevel 1 (
 )
 
 echo.
-echo Build succeeded: %BUILD_DIR%\gotofile.exe
+echo Build succeeded: %BUILD_DIR%\slop.exe

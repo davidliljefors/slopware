@@ -94,9 +94,11 @@ static LONG WINAPI crash_handler(EXCEPTION_POINTERS* ep)
 	char msg[2048];
 	snprintf(msg, sizeof(msg),
 		"ACCESS VIOLATION (0xc0000005)\n\n"
+		"Thread ID:   %lu\n"
 		"Instruction: %s + 0x%llX (addr %p)\n"
 		"Fault addr:  %p (%s)\n\n"
 		"Stack trace:\n",
+		GetCurrentThreadId(),
 		mod_name, (unsigned long long)mod_offset, rip,
 		fault_addr,
 		ep->ExceptionRecord->ExceptionInformation[0] == 0 ? "READ" : "WRITE");

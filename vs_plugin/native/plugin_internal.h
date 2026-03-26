@@ -12,6 +12,8 @@
 #include "plugin_api.h"
 
 #include <atomic>
+#include <stdarg.h>
+#include <stdio.h>
 
 // A file in the current solution.
 struct PluginFile
@@ -106,3 +108,29 @@ struct PluginCallbacks
 
 extern PluginFileStore g_file_store;
 extern PluginCallbacks g_callbacks;
+
+// --------------------------------------------------------------------------
+// Logging
+// --------------------------------------------------------------------------
+
+// Always-available logging. With ENABLE_CONSOLE, prints to stdout.
+// Without it, writes to OutputDebugStringA (visible in VS Output / DebugView).
+#ifdef ENABLE_CONSOLE
+#define PLUGIN_LOG(fmt, ...) do { printf("[GotoSlop] " fmt "\n", ##__VA_ARGS__); fflush(stdout); } while (0)
+#else
+extern "C" __declspec(dllimport) void __stdcall OutputDebugStringA(const char*);
+static inline void plugin_log_impl(const char* fmt, ...)
+{
+	char buf[1024];
+	va_list ap;
+	va_start(ap, fmt);
+	int n = vsnprintf(buf, sizeof(buf) - 1, fmt, ap);
+	va_end(ap);
+	if (n > 0) {
+		buf[n] = '\n';
+		buf[n + 1] = '\0';
+	}
+	OutputDebugStringA(buf);
+}
+#define PLUGIN_LOG(fmt, ...) plugin_log_impl("[GotoSlop] " fmt, ##__VA_ARGS__)
+#endif

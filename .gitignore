@@ -1,13 +1,14 @@
+# Build
 build/*
 build_dev_release/*
 build_shipping/*
 build_plugin_debug/*
 build_plugin_x64/*
 build_plugin_arm64/*
+
+# vs / C# / .NET
 **/.vs/*
 .vscode/*
-
-# C# / .NET
 bin/
 obj/
 *.vsix
@@ -21,14 +22,3 @@ packages/
 project.lock.json
 project.fragment.lock.json
 artifacts/
-
-# Logs and temp files
-*.log
-*.tmp
-*.temp
-*.bak
-
-# Windows
-Thumbs.db
-ehthumbs.db
-Desktop.ini

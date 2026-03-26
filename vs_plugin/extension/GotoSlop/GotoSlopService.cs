@@ -22,6 +22,7 @@ internal sealed class GotoSlopService
     private int _previewVersion;
     private CancellationTokenSource? _previewCts;
     private IDisposable? _solutionSubscription;
+    private readonly SemaphoreSlim _ensureFilesGate = new(1, 1);
 
     private GotoSlopService(VisualStudioExtensibility extensibility)
     {
@@ -53,6 +54,9 @@ internal sealed class GotoSlopService
     /// </summary>
     public async Task EnsureFilesAsync(CancellationToken ct)
     {
+        if (!await _ensureFilesGate.WaitAsync(0, ct))
+            return; // Another call is already in progress
+
         var total = Stopwatch.StartNew();
         try
         {
@@ -126,6 +130,10 @@ internal sealed class GotoSlopService
         {
             total.Stop();
             Trace.WriteLine($"[GotoSlop] EnsureFilesAsync failed after {total.ElapsedMilliseconds}ms: {ex.Message}");
+        }
+        finally
+        {
+            _ensureFilesGate.Release();
         }
     }
 

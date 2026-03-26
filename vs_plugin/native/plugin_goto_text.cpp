@@ -451,6 +451,11 @@ void plugin_goto_text_tick()
 	ImGui::End();
 }
 
+void plugin_goto_text_cancel_search()
+{
+	cancel_search();
+}
+
 void plugin_goto_text_shutdown()
 {
 	cancel_search();

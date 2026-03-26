@@ -1,7 +1,7 @@
 @echo off
 setlocal
 
-set BUILD_DIR=build_shipping
+set BUILD_DIR=build_release
 
 if not exist %BUILD_DIR% mkdir %BUILD_DIR%
 
@@ -18,4 +18,4 @@ if errorlevel 1 (
 )
 
 echo.
-echo Build succeeded: %BUILD_DIR%\gotofile.exe
+echo Build succeeded: %BUILD_DIR%\slop.exe
