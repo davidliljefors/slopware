@@ -574,7 +574,7 @@ void dir_watcher_poll(DirWatcher* w, DirWatchCallback cb, void* user_data)
 void dir_watcher_destroy(DirWatcher* w)
 {
 	if (!w) return;
-	CancelIo(w->dir_handle);
+	CancelIoEx(w->dir_handle, &w->overlapped);
 	if (w->pending && w->overlapped.hEvent)
 		WaitForSingleObject(w->overlapped.hEvent, 1000);
 	if (w->overlapped.hEvent)
