@@ -181,12 +181,12 @@ static HWND                     g_hwnd = nullptr;
 static f32                      g_dpi_scale = 1.0f;
 static std::atomic<bool>        g_visible { false };
 static std::atomic<bool>        g_shutdown_requested { false };
-static std::atomic<bool>        g_hide_requested { false };
+static bool                     g_hide_requested = false;
 static Thread*                  g_window_thread = nullptr;
 static PluginMode               g_current_mode = PluginMode_GoToFile;
 static bool                     g_mode_initialized = false;
 static BumpAllocator            g_frame_alloc(512 * 1024);
-static DWORD                    g_show_tick = 0;  // for activation grace period
+static HWND                     g_prev_foreground = nullptr;
 
 // Custom window messages posted to the window thread
 static constexpr UINT WM_PLUGIN_SHOW     = WM_APP + 100;
@@ -309,7 +309,7 @@ static void activate_mode(PluginMode mode)
 
 static void request_hide()
 {
-	g_hide_requested.store(true, std::memory_order_release);
+	g_hide_requested = true;
 }
 
 static void do_show(PluginMode mode)
@@ -325,9 +325,9 @@ static void do_show(PluginMode mode)
 
 	// Clear any stale hide request before showing (focus-stealing can
 	// trigger transient WM_ACTIVATE(WA_INACTIVE) during do_show)
-	g_hide_requested.store(false, std::memory_order_release);
+	g_hide_requested = false;
 
-	g_show_tick = GetTickCount();
+	g_prev_foreground = GetForegroundWindow();
 	ShowWindow(g_hwnd, SW_SHOW);
 	UpdateWindow(g_hwnd);
 
@@ -358,6 +358,9 @@ static void do_hide()
 		g_mode_initialized = false;
 	}
 
+	if (g_prev_foreground && IsWindow(g_prev_foreground) && GetForegroundWindow() == g_hwnd)
+		SetForegroundWindow(g_prev_foreground);
+	g_prev_foreground = nullptr;
 	ShowWindow(g_hwnd, SW_HIDE);
 	ImGui::GetIO().ClearInputKeys();
 	g_visible.store(false);
@@ -391,8 +394,9 @@ static void render_frame()
 
 	g_pSwapChain->Present(1, 0);
 
-	// Process deferred hide — runs after tick/render so shutdown
-	if (g_hide_requested.exchange(false, std::memory_order_acquire)) {
+	// Process deferred hide
+	if (g_hide_requested || GetForegroundWindow() != g_hwnd) {
+		g_hide_requested = false;
 		do_hide();
 	}
 }
@@ -446,12 +450,6 @@ static LRESULT WINAPI PluginWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 		return 0;
 	}
 	case WM_ACTIVATE:
-		if (LOWORD(wParam) == WA_INACTIVE) {
-			// Grace period: ignore deactivation right after showing
-			if (GetTickCount() - g_show_tick > 500) {
-				request_hide();
-			}
-		}
 		return 0;
 	case WM_CLOSE:
 		request_hide();
