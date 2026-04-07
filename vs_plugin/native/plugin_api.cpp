@@ -10,6 +10,11 @@
 #include <stdio.h>
 #include <atomic>
 #include <ppl.h>
+#include <time.h>
+
+#define WIN32_LEAN_AND_MEAN
+#define NOMINMAX
+#include <windows.h>
 
 #include "allocators.h"
 #include "app_util.h"
@@ -17,10 +22,6 @@
 #include "murmurhash3.inl"
 #include "os.h"
 #include "utf.h"
-
-extern "C" __declspec(dllimport) int __stdcall AllocConsole(void);
-extern "C" __declspec(dllimport) void* __stdcall GetStdHandle(unsigned long nStdHandle);
-extern "C" __declspec(dllimport) int __stdcall SetConsoleTitleA(const char*);
 
 static void debug_console_init()
 {
@@ -40,6 +41,7 @@ PluginCallbacks g_callbacks;
 static i32               g_preload_version = -1;
 static Thread*           g_preload_thread = nullptr;
 std::atomic<bool>        g_preloading { false };
+std::atomic<bool>        g_waiting_for_vs { false };
 
 static Thread*           g_refresh_thread = nullptr;
 static std::atomic<bool> g_refreshing { false };
@@ -293,6 +295,22 @@ void plugin_load_saved_extensions()
 // Helpers
 // --------------------------------------------------------------------------
 
+static void log_dll_timestamp()
+{
+	HMODULE hm = nullptr;
+	GetModuleHandleExA(GET_MODULE_HANDLE_EX_FLAG_FROM_ADDRESS | GET_MODULE_HANDLE_EX_FLAG_UNCHANGED_REFCOUNT,
+		(LPCSTR)log_dll_timestamp, &hm);
+	if (!hm) return;
+	auto* dos = (IMAGE_DOS_HEADER*)hm;
+	auto* nt = (IMAGE_NT_HEADERS*)((char*)hm + dos->e_lfanew);
+	time_t t = (time_t)nt->FileHeader.TimeDateStamp;
+	struct tm tm;
+	gmtime_s(&tm, &t);
+	char buf[64];
+	strftime(buf, sizeof(buf), "%Y-%m-%d %H:%M:%S UTC", &tm);
+	PLUGIN_LOG("DLL built: %s", buf);
+}
+
 static void ensure_init()
 {
 	if (g_initialized) return;
@@ -300,6 +318,7 @@ static void ensure_init()
 #ifdef ENABLE_CONSOLE
 	debug_console_init();
 #endif
+	log_dll_timestamp();
 	lock_init(&g_watchers_lock);
 	file_store_init(&g_file_store);
 }
@@ -571,9 +590,17 @@ static PluginFile make_plugin_file(const char* src, const char* proj)
 	return pf;
 }
 
+PLUGIN_API void __stdcall plugin_begin_query_files(void)
+{
+	ensure_init();
+	g_waiting_for_vs.store(true, std::memory_order_release);
+	PLUGIN_LOG("begin_query_files: waiting for VS");
+}
+
 PLUGIN_API void __stdcall plugin_set_solution_files(const char** files, const char** projects, int count)
 {
 	ensure_init();
+	g_waiting_for_vs.store(false, std::memory_order_release);
 
 	PLUGIN_LOG("SetSolutionFiles: %d files", count);
 
@@ -723,11 +750,11 @@ PLUGIN_API void __stdcall plugin_shutdown(void)
 // DllMain
 // --------------------------------------------------------------------------
 
-extern "C" __declspec(dllimport) int __stdcall DisableThreadLibraryCalls(void*);
+//extern "C" __declspec(dllimport) int __stdcall DisableThreadLibraryCalls(void*);
 
 extern "C" int __stdcall DllMain(void* hModule, unsigned long reason, void*)
 {
 	if (reason == 1) // DLL_PROCESS_ATTACH
-		DisableThreadLibraryCalls(hModule);
+		DisableThreadLibraryCalls((HMODULE)hModule);
 	return 1;
 }

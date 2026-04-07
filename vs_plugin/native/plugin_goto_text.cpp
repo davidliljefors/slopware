@@ -234,7 +234,14 @@ void plugin_goto_text_tick()
 		ImGuiWindowFlags_NoBringToFrontOnFocus);
 
 	// Loading indicator
-	if (g_preloading.load()) {
+	if (g_waiting_for_vs.load(std::memory_order_acquire)) {
+		ImGui::PushStyleColor(ImGuiCol_PlotHistogram, theme_color_text_indexing());
+		ImGui::ProgressBar(-1.0f * (f32)ImGui::GetTime(), ImVec2(-gear_size().x - ImGui::GetStyle().ItemSpacing.x, 0), "Waiting for VS...");
+		ImGui::PopStyleColor();
+		ImGui::SameLine();
+		if (ImGui::Button(ICON_GEAR, gear_size()))
+			ImGui::OpenPopup("TextSettings");
+	} else if (g_preloading.load()) {
 		ImGui::PushStyleColor(ImGuiCol_PlotHistogram, theme_color_text_indexing());
 		ImGui::ProgressBar(-1.0f * (f32)ImGui::GetTime(), ImVec2(-gear_size().x - ImGui::GetStyle().ItemSpacing.x, 0), "Loading file contents...");
 		ImGui::PopStyleColor();

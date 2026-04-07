@@ -70,6 +70,9 @@ internal static class NativeBridge
     public static extern void plugin_shutdown();
 
     [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
+    public static extern void plugin_begin_query_files();
+
+    [DllImport(DllName, CallingConvention = CallingConvention.StdCall)]
     public static extern void plugin_preload_content();
 
     public static void EnsureDllResolver()

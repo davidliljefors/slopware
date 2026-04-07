@@ -20,6 +20,11 @@ extern "C" {
 //   column  - 0-based column offset of the match (0 for Go-To-File)
 typedef void (__stdcall *PluginSelectionCallback)(const char* path, int line, int column);
 
+// Signal that the host is about to query solution files from VS.
+// The native side will show a "Waiting for VS..." indicator until
+// plugin_set_solution_files() is called.
+PLUGIN_API void __stdcall plugin_begin_query_files(void);
+
 // Provide the list of solution files (full replacement).  The DLL copies all data.
 //   files    - array of pointers to null-terminated UTF-8 paths
 //   projects - array of pointers to null-terminated UTF-8 project names (parallel to files)

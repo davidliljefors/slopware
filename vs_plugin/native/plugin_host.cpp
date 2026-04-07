@@ -22,6 +22,7 @@
 
 #include "allocators.h"
 #include "imgui.h"
+#include "imgui_internal.h"
 #include "imgui_impl_dx11.h"
 #include "imgui_impl_win32.h"
 #include "os.h"
@@ -186,7 +187,6 @@ static Thread*                  g_window_thread = nullptr;
 static PluginMode               g_current_mode = PluginMode_GoToFile;
 static bool                     g_mode_initialized = false;
 static BumpAllocator            g_frame_alloc(512 * 1024);
-static DWORD                    g_show_tick = 0;  // for activation grace period
 
 // Custom window messages posted to the window thread
 static constexpr UINT WM_PLUGIN_SHOW     = WM_APP + 100;
@@ -314,8 +314,7 @@ static void request_hide()
 
 static void do_show(PluginMode mode)
 {
-    window_center_on_monitor(g_hwnd);
-
+	window_center_on_monitor(g_hwnd);
 	activate_mode(mode);
 
 	const wchar_t* title = L"Go To File";
@@ -323,25 +322,20 @@ static void do_show(PluginMode mode)
 	else if (mode == PluginMode_GoToTextInFile) title = L"Search in File";
 	SetWindowTextW(g_hwnd, title);
 
-	// Clear any stale hide request before showing (focus-stealing can
-	// trigger transient WM_ACTIVATE(WA_INACTIVE) during do_show)
-	g_hide_requested.store(false, std::memory_order_release);
-
-	g_show_tick = GetTickCount();
 	ShowWindow(g_hwnd, SW_SHOW);
 	UpdateWindow(g_hwnd);
 
-	// Steal foreground focus from the VS process.
-	DWORD fg_thread = GetWindowThreadProcessId(GetForegroundWindow(), nullptr);
-	DWORD our_thread = GetCurrentThreadId();
-	if (fg_thread != our_thread) {
-		AttachThreadInput(fg_thread, our_thread, TRUE);
-		SetForegroundWindow(g_hwnd);
-		AttachThreadInput(fg_thread, our_thread, FALSE);
-	} else {
-		SetForegroundWindow(g_hwnd);
-	}
+	// Synthetic Alt press grants our process the foreground right
+	INPUT ip = {};
+	ip.type = INPUT_KEYBOARD;
+	ip.ki.wVk = VK_MENU;
+	SendInput(1, &ip, sizeof(INPUT));
+	ip.ki.dwFlags = KEYEVENTF_KEYUP;
+	SendInput(1, &ip, sizeof(INPUT));
 
+	SetForegroundWindow(g_hwnd);
+
+	g_hide_requested.store(false, std::memory_order_release);
 	g_visible.store(true);
 }
 
@@ -358,8 +352,20 @@ static void do_hide()
 		g_mode_initialized = false;
 	}
 
-	ShowWindow(g_hwnd, SW_HIDE);
+	// clear imgui state
+	ImGui::ClearActiveID();
 	ImGui::GetIO().ClearInputKeys();
+
+	// do a dummy frame to ensure imgui is properly clear state for next reopen.
+	ImGui_ImplDX11_NewFrame();
+	ImGui_ImplWin32_NewFrame();
+	ImGui::NewFrame();
+	bool open = false;
+	ImGui::Begin("non_existing_window", &open);
+	ImGui::End();
+	ImGui::EndFrame();
+
+	ShowWindow(g_hwnd, SW_HIDE);
 	g_visible.store(false);
 }
 
@@ -391,10 +397,8 @@ static void render_frame()
 
 	g_pSwapChain->Present(1, 0);
 
-	// Process deferred hide — runs after tick/render so shutdown
-	if (g_hide_requested.exchange(false, std::memory_order_acquire)) {
+	if (g_hide_requested.exchange(false, std::memory_order_acquire))
 		do_hide();
-	}
 }
 
 // --------------------------------------------------------------------------
@@ -403,6 +407,11 @@ static void render_frame()
 
 static LRESULT WINAPI PluginWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
+	if (msg == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE) {
+		request_hide();
+		return 0;
+	}
+
 	if (ImGui_ImplWin32_WndProcHandler(hWnd, msg, wParam, lParam))
 		return true;
 
@@ -445,14 +454,6 @@ static LRESULT WINAPI PluginWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 			SWP_NOZORDER | SWP_NOACTIVATE);
 		return 0;
 	}
-	case WM_ACTIVATE:
-		if (LOWORD(wParam) == WA_INACTIVE) {
-			// Grace period: ignore deactivation right after showing
-			if (GetTickCount() - g_show_tick > 500) {
-				request_hide();
-			}
-		}
-		return 0;
 	case WM_CLOSE:
 		request_hide();
 		return 0;  // Don't destroy — just hide
@@ -621,7 +622,7 @@ void plugin_host_show(PluginMode mode)
 	plugin_host_ensure_running();
 	if (!g_hwnd) return;
 
-	// Post to window thread — it will do the actual ShowWindow + mode init
+	PLUGIN_LOG("plugin_host_show: mode=%d, posting WM_PLUGIN_SHOW", (int)mode);
 	PostMessageW(g_hwnd, WM_PLUGIN_SHOW, (WPARAM)mode, 0);
 }
 

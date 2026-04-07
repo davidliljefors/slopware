@@ -1,8 +1,4 @@
 #include "plugin_goto_file.h"
-#include "plugin_internal.h"
-#include "plugin_host.h"
-#include "string_util.h"
-#include "text_search.h"
 
 #include <algorithm>
 #include <atomic>
@@ -14,17 +10,22 @@
 #include "imgui_util.h"
 #include "os.h"
 #include "os_window.h"
+#include "plugin_host.h"
+#include "plugin_internal.h"
+#include "string_util.h"
+#include "text_search.h"
 #include "theme.h"
+
 
 // --------------------------------------------------------------------------
 // Search state
 // --------------------------------------------------------------------------
 
 static constexpr i32 SEARCH_MAX_RESULTS = 10000;
-static constexpr i32 STAGING_CAPACITY   = SEARCH_MAX_RESULTS * 4;
+static constexpr i32 STAGING_CAPACITY = SEARCH_MAX_RESULTS * 4;
 
 static char g_search_buf[512] = {};
-static i32  g_selected_index = 0;
+static i32 g_selected_index = 0;
 
 static i32 g_result_indices[SEARCH_MAX_RESULTS];
 static i32 g_result_count = 0;
@@ -59,7 +60,8 @@ static ImVec2 gear_size()
 static void cancel_search()
 {
 	g_search_cancel.store(true, std::memory_order_release);
-	if (g_search_tg) g_search_tg->wait();
+	if (g_search_tg)
+		g_search_tg->wait();
 	g_search_cancel.store(false, std::memory_order_release);
 	g_staging_ready.store(false, std::memory_order_release);
 }
@@ -81,15 +83,19 @@ static void parse_highlight_tokens()
 
 	i32 in_index = -1;
 	for (i32 i = 0; i < full.count; i++) {
-		if (strcmp(full.tokens[i], "in") == 0) { in_index = i; break; }
+		if (strcmp(full.tokens[i], "in") == 0) {
+			in_index = i;
+			break;
+		}
 	}
 
 	i32 name_end = (in_index >= 0) ? in_index : full.count;
 	char name_str[TOKEN_QUERY_BUF];
 	i32 npos = 0;
 	for (i32 i = 0; i < name_end && npos < TOKEN_QUERY_BUF - 1; i++) {
-		if (i > 0) name_str[npos++] = ' ';
-		for (const char* s = full.tokens[i]; *s && npos < TOKEN_QUERY_BUF - 1; )
+		if (i > 0)
+			name_str[npos++] = ' ';
+		for (const char* s = full.tokens[i]; *s && npos < TOKEN_QUERY_BUF - 1;)
 			name_str[npos++] = *s++;
 	}
 	name_str[npos] = '\0';
@@ -99,8 +105,9 @@ static void parse_highlight_tokens()
 	char proj_str[TOKEN_QUERY_BUF];
 	i32 ppos = 0;
 	for (i32 i = proj_start; i < full.count && ppos < TOKEN_QUERY_BUF - 1; i++) {
-		if (i > proj_start) proj_str[ppos++] = ' ';
-		for (const char* s = full.tokens[i]; *s && ppos < TOKEN_QUERY_BUF - 1; )
+		if (i > proj_start)
+			proj_str[ppos++] = ' ';
+		for (const char* s = full.tokens[i]; *s && ppos < TOKEN_QUERY_BUF - 1;)
 			proj_str[ppos++] = *s++;
 	}
 	proj_str[ppos] = '\0';
@@ -119,12 +126,17 @@ static void do_search_bg()
 	{
 		char* p = query;
 		while (*p) {
-			while (*p == ' ') p++;
-			if (!*p) break;
+			while (*p == ' ')
+				p++;
+			if (!*p)
+				break;
 			tokens[token_count++] = p;
-			while (*p && *p != ' ') p++;
-			if (*p) *p++ = '\0';
-			if (token_count >= 64) break;
+			while (*p && *p != ' ')
+				p++;
+			if (*p)
+				*p++ = '\0';
+			if (token_count >= 64)
+				break;
 		}
 	}
 	if (token_count == 0) {
@@ -136,7 +148,10 @@ static void do_search_bg()
 	// Split at "in" keyword: name tokens before, project tokens after
 	i32 in_index = -1;
 	for (i32 i = 0; i < token_count; i++) {
-		if (strcmp(tokens[i], "in") == 0) { in_index = i; break; }
+		if (strcmp(tokens[i], "in") == 0) {
+			in_index = i;
+			break;
+		}
 	}
 	i32 name_count = (in_index >= 0) ? in_index : token_count;
 	i32 proj_start = (in_index >= 0) ? in_index + 1 : token_count;
@@ -156,34 +171,48 @@ static void do_search_bg()
 	i32 num_chunks = (file_count + CHUNK - 1) / CHUNK;
 
 	concurrency::parallel_for(0, num_chunks, [&](i32 ci) {
-		if (g_search_cancel.load(std::memory_order_relaxed)) return;
+		if (g_search_cancel.load(std::memory_order_relaxed))
+			return;
 
 		i32 start = ci * CHUNK;
 		i32 end = start + CHUNK;
-		if (end > file_count) end = file_count;
+		if (end > file_count)
+			end = file_count;
 
 		for (i32 i = start; i < end; i++) {
-			if (match_count.load(std::memory_order_relaxed) >= STAGING_CAPACITY) return;
-			if ((i & 1023) == 0 && g_search_cancel.load(std::memory_order_relaxed)) return;
+			if (match_count.load(std::memory_order_relaxed) >= STAGING_CAPACITY)
+				return;
+			if ((i & 1023) == 0 && g_search_cancel.load(std::memory_order_relaxed))
+				return;
 
 			const char* lower = g_file_store.files[i].filename_lower;
 			const char* plower = g_file_store.files[i].project_lower;
-			if (!lower) continue;
+			if (!lower)
+				continue;
 
 			// Match name tokens against filename
 			bool match = true;
 			for (i32 t = 0; t < name_count; t++) {
-				if (!strstr(lower, tokens[t])) { match = false; break; }
+				if (!strstr(lower, tokens[t])) {
+					match = false;
+					break;
+				}
 			}
-			if (!match) continue;
+			if (!match)
+				continue;
 
 			// Match project tokens against project name
 			if (proj_count > 0) {
-				if (!plower) continue;
+				if (!plower)
+					continue;
 				for (i32 t = 0; t < proj_count; t++) {
-					if (!strstr(plower, tokens[proj_start + t])) { match = false; break; }
+					if (!strstr(plower, tokens[proj_start + t])) {
+						match = false;
+						break;
+					}
 				}
-				if (!match) continue;
+				if (!match)
+					continue;
 			}
 
 			i32 idx = match_count.fetch_add(1, std::memory_order_relaxed);
@@ -194,28 +223,40 @@ static void do_search_bg()
 
 	if (!g_search_cancel.load(std::memory_order_relaxed)) {
 		i32 cnt = match_count.load(std::memory_order_relaxed);
-		if (cnt > STAGING_CAPACITY) cnt = STAGING_CAPACITY;
-		if (cnt > SEARCH_MAX_RESULTS) cnt = SEARCH_MAX_RESULTS;
+		if (cnt > STAGING_CAPACITY)
+			cnt = STAGING_CAPACITY;
+		if (cnt > SEARCH_MAX_RESULTS)
+			cnt = SEARCH_MAX_RESULTS;
 		g_staging_count = cnt;
 
 		// Sort: exact stem match > prefix match > substring match
 		if (cnt > 1 && name_count > 0) {
 			i32 first_tok_len = (i32)strlen(tokens[0]);
 
-			i32 bucket0[SEARCH_MAX_RESULTS]; i32 b0 = 0;
-			i32 bucket1[SEARCH_MAX_RESULTS]; i32 b1 = 0;
-			i32 bucket2[SEARCH_MAX_RESULTS]; i32 b2 = 0;
+			i32 bucket0[SEARCH_MAX_RESULTS];
+			i32 b0 = 0;
+			i32 bucket1[SEARCH_MAX_RESULTS];
+			i32 b1 = 0;
+			i32 bucket2[SEARCH_MAX_RESULTS];
+			i32 b2 = 0;
 
 			for (i32 i = 0; i < cnt; i++) {
 				i32 idx = g_staging_indices[i];
-				if (idx >= (i32)g_file_store.files.count) { bucket2[b2++] = idx; continue; }
+				if (idx >= (i32)g_file_store.files.count) {
+					bucket2[b2++] = idx;
+					continue;
+				}
 				const char* lo = g_file_store.files[idx].filename_lower;
-				if (!lo) { bucket2[b2++] = idx; continue; }
+				if (!lo) {
+					bucket2[b2++] = idx;
+					continue;
+				}
 
 				i32 lo_len = (i32)strlen(lo);
 				const char* dot = nullptr;
 				for (const char* p = lo; *p; p++)
-					if (*p == '.') dot = p;
+					if (*p == '.')
+						dot = p;
 				i32 stem_len = dot ? (i32)(dot - lo) : lo_len;
 
 				if (stem_len == first_tok_len && memcmp(lo, tokens[0], first_tok_len) == 0)
@@ -229,9 +270,11 @@ static void do_search_bg()
 			// Within each bucket, sort by filename length (shorter first)
 			auto by_len = [](i32 a, i32 b) {
 				i32 la = (a < (i32)g_file_store.files.count && g_file_store.files[a].filename_lower)
-					? (i32)strlen(g_file_store.files[a].filename_lower) : 0x7fffffff;
+					? (i32)strlen(g_file_store.files[a].filename_lower)
+					: 0x7fffffff;
 				i32 lb = (b < (i32)g_file_store.files.count && g_file_store.files[b].filename_lower)
-					? (i32)strlen(g_file_store.files[b].filename_lower) : 0x7fffffff;
+					? (i32)strlen(g_file_store.files[b].filename_lower)
+					: 0x7fffffff;
 				return la < lb;
 			};
 			std::sort(bucket0, bucket0 + b0, by_len);
@@ -239,9 +282,12 @@ static void do_search_bg()
 			std::sort(bucket2, bucket2 + b2, by_len);
 
 			i32 out = 0;
-			memcpy(g_staging_indices + out, bucket0, b0 * sizeof(i32)); out += b0;
-			memcpy(g_staging_indices + out, bucket1, b1 * sizeof(i32)); out += b1;
-			memcpy(g_staging_indices + out, bucket2, b2 * sizeof(i32)); out += b2;
+			memcpy(g_staging_indices + out, bucket0, b0 * sizeof(i32));
+			out += b0;
+			memcpy(g_staging_indices + out, bucket1, b1 * sizeof(i32));
+			out += b1;
+			memcpy(g_staging_indices + out, bucket2, b2 * sizeof(i32));
+			out += b2;
 		}
 
 		g_staging_ready.store(true, std::memory_order_release);
@@ -276,70 +322,99 @@ void plugin_goto_file_tick()
 	ImGui::SetNextWindowPos(ImVec2(0, 0));
 	ImGui::SetNextWindowSize(io.DisplaySize);
 	ImGui::Begin("##gotofile", nullptr,
-		ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize |
-		ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse |
-		ImGuiWindowFlags_NoBringToFrontOnFocus);
+		ImGuiWindowFlags_NoTitleBar | ImGuiWindowFlags_NoResize | ImGuiWindowFlags_NoMove | ImGuiWindowFlags_NoCollapse | ImGuiWindowFlags_NoBringToFrontOnFocus);
 
-	// Focus search box
-	if (!ImGui::IsAnyItemActive() && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
-		ImGui::SetKeyboardFocusHere();
+	// Waiting for VS indicator
+	if (g_waiting_for_vs.load(std::memory_order_acquire)) {
+		ImGui::PushStyleColor(ImGuiCol_PlotHistogram, theme_color_text_indexing());
+		ImGui::ProgressBar(-1.0f * (f32)ImGui::GetTime(), ImVec2(-gear_size().x - ImGui::GetStyle().ItemSpacing.x, 0), "Waiting for VS...");
+		ImGui::PopStyleColor();
+		ImGui::SameLine();
+		if (ImGui::Button(ICON_GEAR, gear_size()))
+			ImGui::OpenPopup("FileSettings");
+	} else {
+		// Focus search box
+		if (!ImGui::IsAnyItemActive() && !ImGui::IsPopupOpen("", ImGuiPopupFlags_AnyPopupId))
+			ImGui::SetKeyboardFocusHere();
 
-	f32 btn_w = gear_size().x;
-	ImGui::SetNextItemWidth(-(btn_w + ImGui::GetStyle().ItemSpacing.x));
+		f32 btn_w = gear_size().x;
+		ImGui::SetNextItemWidth(-(btn_w + ImGui::GetStyle().ItemSpacing.x));
 
-	bool enter = ImGui::InputTextWithHint("##search", "Search files...",
-		g_search_buf, sizeof(g_search_buf), ImGuiInputTextFlags_EnterReturnsTrue);
+		bool enter = ImGui::InputTextWithHint("##search", "Search files...",
+			g_search_buf, sizeof(g_search_buf), ImGuiInputTextFlags_EnterReturnsTrue);
 
-	if (enter && g_result_count > 0 && g_selected_index < g_result_count) {
-		i32 fi = g_result_indices[g_selected_index];
-		char path_copy[1024] = {};
-		{
-			ReadGuard rg(&g_file_store.files_lock);
-			if (fi < (i32)g_file_store.files.count && g_file_store.files[fi].full_path) {
-				i32 len = (i32)strlen(g_file_store.files[fi].full_path);
-				if (len < (i32)sizeof(path_copy)) memcpy(path_copy, g_file_store.files[fi].full_path, len + 1);
+		if (enter && g_result_count > 0 && g_selected_index < g_result_count) {
+			i32 fi = g_result_indices[g_selected_index];
+			char path_copy[1024] = {};
+			{
+				ReadGuard rg(&g_file_store.files_lock);
+				if (fi < (i32)g_file_store.files.count && g_file_store.files[fi].full_path) {
+					i32 len = (i32)strlen(g_file_store.files[fi].full_path);
+					if (len < (i32)sizeof(path_copy))
+						memcpy(path_copy, g_file_store.files[fi].full_path, len + 1);
+				}
 			}
+			if (path_copy[0] && g_callbacks.selection) {
+				g_callbacks.selection(path_copy, 0, 0);
+			}
+			host_quit();
 		}
-		if (path_copy[0] && g_callbacks.selection) {
-			g_callbacks.selection(path_copy, 0, 0);
-		}
-		host_quit();
-	}
 
-	ImGui::SameLine();
-	if (ImGui::Button(ICON_GEAR, gear_size()))
-		ImGui::OpenPopup("FileSettings");
+		ImGui::SameLine();
+		if (ImGui::Button(ICON_GEAR, gear_size()))
+			ImGui::OpenPopup("FileSettings");
 
-	// Trigger search on change
-	if (strcmp(g_search_buf, g_bg_query) != 0) {
-		cancel_search();
-		if (g_search_buf[0] == '\0') {
-			g_result_count = 0;
-			token_query_clear(&g_hl_name);
-			token_query_clear(&g_hl_proj);
-			memcpy(g_bg_query, g_search_buf, sizeof(g_search_buf));
-		} else {
-			parse_highlight_tokens();
-			memcpy(g_bg_query, g_search_buf, sizeof(g_search_buf));
-			g_selected_index = 0;
-			g_search_tg->run([]() { do_search_bg(); });
+		// Trigger search on change
+		if (strcmp(g_search_buf, g_bg_query) != 0) {
+			cancel_search();
+			if (g_search_buf[0] == '\0') {
+				g_result_count = 0;
+				token_query_clear(&g_hl_name);
+				token_query_clear(&g_hl_proj);
+				memcpy(g_bg_query, g_search_buf, sizeof(g_search_buf));
+			} else {
+				parse_highlight_tokens();
+				memcpy(g_bg_query, g_search_buf, sizeof(g_search_buf));
+				g_selected_index = 0;
+				g_search_tg->run([]() { do_search_bg(); });
+			}
 		}
 	}
 
 	// Navigation
 	if (g_result_count > 0) {
-		if (key_pressed(ImGuiKey_UpArrow))   { g_selected_index--; if (g_selected_index < 0) g_selected_index = 0; }
-		if (key_pressed(ImGuiKey_DownArrow)) { g_selected_index++; if (g_selected_index >= g_result_count) g_selected_index = g_result_count - 1; }
-		if (key_pressed(ImGuiKey_PageUp))    { g_selected_index -= 15; if (g_selected_index < 0) g_selected_index = 0; }
-		if (key_pressed(ImGuiKey_PageDown))  { g_selected_index += 15; if (g_selected_index >= g_result_count) g_selected_index = g_result_count - 1; }
-		if (key_pressed(ImGuiKey_Home))      g_selected_index = 0;
-		if (key_pressed(ImGuiKey_End))       g_selected_index = g_result_count - 1;
+		if (key_pressed(ImGuiKey_UpArrow)) {
+			g_selected_index--;
+			if (g_selected_index < 0)
+				g_selected_index = 0;
+		}
+		if (key_pressed(ImGuiKey_DownArrow)) {
+			g_selected_index++;
+			if (g_selected_index >= g_result_count)
+				g_selected_index = g_result_count - 1;
+		}
+		if (key_pressed(ImGuiKey_PageUp)) {
+			g_selected_index -= 15;
+			if (g_selected_index < 0)
+				g_selected_index = 0;
+		}
+		if (key_pressed(ImGuiKey_PageDown)) {
+			g_selected_index += 15;
+			if (g_selected_index >= g_result_count)
+				g_selected_index = g_result_count - 1;
+		}
+		if (key_pressed(ImGuiKey_Home))
+			g_selected_index = 0;
+		if (key_pressed(ImGuiKey_End))
+			g_selected_index = g_result_count - 1;
 
 		f32 wheel = io.MouseWheel;
 		if (wheel != 0.0f) {
 			g_selected_index -= (i32)wheel;
-			if (g_selected_index < 0) g_selected_index = 0;
-			if (g_selected_index >= g_result_count) g_selected_index = g_result_count - 1;
+			if (g_selected_index < 0)
+				g_selected_index = 0;
+			if (g_selected_index >= g_result_count)
+				g_selected_index = g_result_count - 1;
 			io.MouseWheel = 0.0f;
 		}
 	}
@@ -349,7 +424,10 @@ void plugin_goto_file_tick()
 	// Help text or results
 	if (g_search_buf[0] == '\0') {
 		i32 file_count;
-		{ ReadGuard rg(&g_file_store.files_lock); file_count = (i32)g_file_store.files.count; }
+		{
+			ReadGuard rg(&g_file_store.files_lock);
+			file_count = (i32)g_file_store.files.count;
+		}
 		ImGui::TextDisabled("Type to search %d solution files. Escape to close.", file_count);
 	} else {
 		if (g_result_count > 1)
@@ -357,8 +435,8 @@ void plugin_goto_file_tick()
 		else if (g_result_count == 1)
 			ImGui::Text("1 result");
 
-		ImVec4 text_color   = theme_color_text();
-		ImVec4 hl_color     = theme_color_highlight();
+		ImVec4 text_color = theme_color_text();
+		ImVec4 hl_color = theme_color_highlight();
 		ImVec4 sel_bg_color = theme_color_sel_bg();
 		ImVec4 sel_text_col = theme_color_sel_text();
 		ImVec4 disabled_col = theme_color_text_disabled();
@@ -383,7 +461,8 @@ void plugin_goto_file_tick()
 					proj = g_file_store.files[fi].project_name;
 					proj_lower = g_file_store.files[fi].project_lower;
 				}
-				if (!fname) continue;
+				if (!fname)
+					continue;
 
 				ImGui::PushID(i);
 				bool selected = (i == g_selected_index);

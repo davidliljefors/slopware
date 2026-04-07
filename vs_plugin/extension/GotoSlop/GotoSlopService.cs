@@ -85,6 +85,9 @@ internal sealed class GotoSlopService
 
             _cachedSolutionFingerprint = solutionPath;
 
+            // Tell the native side we're about to query files from VS
+            NativeBridge.plugin_begin_query_files();
+
             // Solution changed - full file query with project names
             sw.Restart();
             var projectsWithFiles = await workspace.QueryProjectsAsync(

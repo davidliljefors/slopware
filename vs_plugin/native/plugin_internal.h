@@ -98,6 +98,9 @@ bool is_file_content_loading();
 // True while plugin_preload_content background thread is running.
 extern std::atomic<bool> g_preloading;
 
+// True while waiting for VS to send solution files.
+extern std::atomic<bool> g_waiting_for_vs;
+
 
 // Callbacks from the extension.
 struct PluginCallbacks
