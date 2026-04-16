@@ -976,8 +976,9 @@ i32 host_run(App* app)
 	GetMonitorInfoW(hmon, &mi);
 	int screen_w = mi.rcWork.right - mi.rcWork.left;
 	int screen_h = mi.rcWork.bottom - mi.rcWork.top;
-	int win_w = (app->initial_width > 0) ? app->initial_width : screen_w * 40 / 100;
-	int win_h = (app->initial_height > 0) ? app->initial_height : screen_h * 40 / 100;
+	float init_dpi_scale = (float)GetDpiForSystem() / 96.0f;
+	int win_w = (app->initial_width > 0) ? (int)(app->initial_width * init_dpi_scale) : screen_w * 40 / 100;
+	int win_h = (app->initial_height > 0) ? (int)(app->initial_height * init_dpi_scale) : screen_h * 40 / 100;
 	int win_x = mi.rcWork.left + (screen_w - win_w) / 2;
 	int win_y = mi.rcWork.top + (screen_h - win_h) / 2;
 

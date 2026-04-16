@@ -72,8 +72,9 @@ void theme_apply(f32 dpi_scale)
 	style.WindowRounding = 6.0f;
 	style.TextSelectedBgRounding = 4.0f;
 	style.ScaleAllSizes(dpi_scale);
+	style.WindowBorderSize = 0.0f;
 	style.Colors[ImGuiCol_WindowBg]          = COLOR_BG;
-	style.Colors[ImGuiCol_Border]            = COLOR_BG;
+	style.Colors[ImGuiCol_Border]            = hexToImv4("#665c54");
 	style.Colors[ImGuiCol_ChildBg]           = COLOR_BG;
 	style.Colors[ImGuiCol_PopupBg]           = COLOR_BG;
 	style.Colors[ImGuiCol_FrameBg]           = COLOR_FRAME_BG;
@@ -107,6 +108,20 @@ void theme_apply(f32 dpi_scale)
 	style.Colors[ImGuiCol_ScrollbarGrabHovered] = COLOR_SCROLL_HOVER;
 	style.Colors[ImGuiCol_ScrollbarGrabActive] = COLOR_SCROLL_ACTIVE;
 
+	// Tabs (yellow accent)
+	style.Colors[ImGuiCol_Tab]                     = hexToImv4("#504945");
+	style.Colors[ImGuiCol_TabHovered]              = hexToImv4("#fabd2f", 0.45f);
+	style.Colors[ImGuiCol_TabSelected]             = hexToImv4("#fabd2f", 0.30f);
+	style.Colors[ImGuiCol_TabSelectedOverline]     = hexToImv4("#fabd2f");
+	style.Colors[ImGuiCol_TabDimmed]               = hexToImv4("#3c3836");
+	style.Colors[ImGuiCol_TabDimmedSelected]       = hexToImv4("#fabd2f", 0.20f);
+	style.Colors[ImGuiCol_TabDimmedSelectedOverline] = hexToImv4("#fabd2f", 0.50f);
+	style.TabRounding = 4.0f;
+
+	// Popups (rounded, outlined, slightly lifted)
+	style.PopupRounding = 6.0f;
+	style.PopupBorderSize = 1.0f;
+	style.Colors[ImGuiCol_PopupBg] = hexToImv4("#2e2e2e", 0.97f);
 }
 
 void theme_clear_color(f32* rgba4)

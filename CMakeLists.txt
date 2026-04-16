@@ -59,6 +59,7 @@ add_executable(slop WIN32
     src/os.cpp
     src/os_window.cpp
     src/app_util.cpp
+    src/taskman.cpp
     visualizers/slop.natvis
 )
 

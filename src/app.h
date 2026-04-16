@@ -55,7 +55,7 @@ struct App
 	AppHotkey* hotkeys;
 	i32 hotkey_count;
 
-	// Initial window size in pixels.
+	// Initial window size in logical pixels (DPI-scaled by host).
 	i32 initial_width;
 	i32 initial_height;
 

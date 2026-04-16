@@ -396,7 +396,7 @@ void plugin_load_file_contents()
 	});
 }
 
-static void refresh_stale_content_impl()
+void refresh_stale_content_impl()
 {
 	PluginFileStore* fs = &g_file_store;
 

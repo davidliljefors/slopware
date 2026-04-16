@@ -408,6 +408,7 @@ static void render_frame()
 static LRESULT WINAPI PluginWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM lParam)
 {
 	if (msg == WM_ACTIVATE && LOWORD(wParam) == WA_INACTIVE) {
+		PLUGIN_LOG("PluginWndProc: WM_ACTIVATE with WA_INACTIVE, requesting hide");
 		request_hide();
 		return 0;
 	}
@@ -455,6 +456,7 @@ static LRESULT WINAPI PluginWndProc(HWND hWnd, UINT msg, WPARAM wParam, LPARAM l
 		return 0;
 	}
 	case WM_CLOSE:
+		PLUGIN_LOG("PluginWndProc: WM_CLOSE received, requesting hide");
 		request_hide();
 		return 0;  // Don't destroy — just hide
 	case WM_DESTROY:

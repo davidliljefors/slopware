@@ -107,6 +107,10 @@ static void do_text_search_bg()
 {
 	ensure_refresh_done();
 
+	// Poll directory watchers for changes since the last refresh and reload
+	// any dirty files so that searches always see up-to-date content.
+	refresh_stale_content_impl();
+
 	char query[512];
 	i32 qlen = (i32)strlen(g_bg_query);
 	if (qlen >= (i32)sizeof(query)) qlen = (i32)sizeof(query) - 1;
